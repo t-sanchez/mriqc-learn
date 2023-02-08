@@ -27,9 +27,11 @@ import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 
 
-def plot_batches(X, cols=None, out_file=None, site_labels="left"):
+def plot_batches(
+    X, cols=None, out_file=None, group_by="site", site_labels="left"
+):
     """Plot a matrix of images x metrix clustered by sites."""
-    sort_by = ["site"]
+    sort_by = [group_by]
     if "database" in X.columns:
         sort_by.insert(0, "database")
 
@@ -37,7 +39,7 @@ def plot_batches(X, cols=None, out_file=None, site_labels="left"):
         sort_by.append("rating")
 
     X = X.sort_values(by=sort_by).copy()
-    sites = X.site.values.reshape(-1).tolist()
+    sites = X[group_by].values.reshape(-1).tolist()
 
     # Select features
     numdata = X.select_dtypes([np.number]) if cols is None else X[cols]
@@ -58,7 +60,9 @@ def plot_batches(X, cols=None, out_file=None, site_labels="left"):
     spines = []
     X["index"] = range(len(X))
     for site in list(set(sites)):
-        indices = X.loc[X.site == site, "index"].values.reshape(-1).tolist()
+        indices = (
+            X.loc[X[group_by] == site, "index"].values.reshape(-1).tolist()
+        )
         locations.append(int(np.average(indices)))
         spines.append(indices[0])
 
@@ -103,7 +107,7 @@ def plot_batches(X, cols=None, out_file=None, site_labels="left"):
     return fig
 
 
-def plot_histogram(X, X_scaled, metric=None):
+def plot_histogram(X, X_scaled, groupby="site", metric=None):
     """Plot a histogram with different hues for different sites in X."""
     fig, (ax1, ax2) = plt.subplots(
         1, 2, figsize=(20, 8), sharey=False, constrained_layout=True
@@ -115,9 +119,11 @@ def plot_histogram(X, X_scaled, metric=None):
     ax1.set_prop_cycle(color=colors)
     ax2.set_prop_cycle(color=colors)
 
-    groups = Counter(X.site.values.squeeze().tolist()).most_common()
+    groups = Counter(X[groupby].values.squeeze().tolist()).most_common()
     nstd_iqm_min, nstd_iqm_max = X[metric].min(), X[metric].max()
-    nstd_bin_sides = np.linspace(nstd_iqm_min, nstd_iqm_max, 101, endpoint=True)
+    nstd_bin_sides = np.linspace(
+        nstd_iqm_min, nstd_iqm_max, 101, endpoint=True
+    )
     nstd_width = nstd_bin_sides[1] - nstd_bin_sides[0]
     nstd_bin_centers = nstd_bin_sides[:-1] + 0.5 * nstd_width
 
@@ -140,7 +146,7 @@ def plot_histogram(X, X_scaled, metric=None):
     )
 
     for site, n in groups:
-        nstd_site_data = X[X.site.str.contains(site)]
+        nstd_site_data = X[X[groupby].str.contains(site)]
         nstd_iqm = nstd_site_data[metric].values.squeeze().tolist()
         nstd_hist, _ = np.histogram(
             nstd_iqm,
@@ -149,7 +155,7 @@ def plot_histogram(X, X_scaled, metric=None):
             range=(nstd_iqm_min, nstd_iqm_max),
         )
 
-        std_site_data = X_scaled[X_scaled.site.str.contains(site)]
+        std_site_data = X_scaled[X_scaled[groupby].str.contains(site)]
         std_iqm = std_site_data[metric].values.squeeze().tolist()
         std_hist, _ = np.histogram(
             std_iqm,
@@ -239,7 +245,9 @@ def plot_corrmat(
     im = ax.imshow(data, **kwargs)
 
     # Create colorbar
-    cbar = plt.gcf().colorbar(im, cax=axins1, orientation="horizontal", **cbar_kw)
+    cbar = plt.gcf().colorbar(
+        im, cax=axins1, orientation="horizontal", **cbar_kw
+    )
     cbar.ax.set_ylabel(cbarlabel, rotation=-90, va="bottom")
 
     # Show all ticks and label them with the respective list entries.
@@ -252,7 +260,9 @@ def plot_corrmat(
     ax.tick_params(top=False, bottom=True, labeltop=False, labelbottom=True)
 
     # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor")
+    plt.setp(
+        ax.get_xticklabels(), rotation=90, ha="right", rotation_mode="anchor"
+    )
 
     # Turn spines off and create white grid.
     ax.spines[:].set_visible(False)

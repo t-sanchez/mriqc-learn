@@ -65,9 +65,9 @@ class _FeatureSelection(BaseEstimator, TransformerMixin):
         if self.disable or not self.drop:
             return X
 
-        return X.drop([
-            field for field in self.drop if field not in self.ignore
-        ], axis=1)
+        return X.drop(
+            [field for field in self.drop if field not in self.ignore], axis=1
+        )
 
 
 class DropColumns(_FeatureSelection):
@@ -106,7 +106,6 @@ class PrintColumns(BaseEstimator, TransformerMixin):
 
 
 class SiteRobustScaler(RobustScaler):
-
     def __init__(
         self,
         *,
@@ -184,7 +183,7 @@ class NoiseWinnowFeatSelect(_FeatureSelection):
         n_estimators=1000,
         disable=False,
         k=1,
-        ignore=("site", ),
+        ignore=("site",),
     ):
         self.ignore = ignore
         self.disable = disable
@@ -222,9 +221,7 @@ class NoiseWinnowFeatSelect(_FeatureSelection):
         self.drop = list(set(self.ignore).intersection(columns_))
 
         n_sample, n_feature = np.shape(X_input.drop(self.drop, axis=1))
-        LOG.debug(
-            f"Running Winnow selection with {n_feature} features."
-        )
+        LOG.debug(f"Running Winnow selection with {n_feature} features.")
 
         if self.use_classifier:
             target_dim = np.squeeze(y).ndim
@@ -243,46 +240,46 @@ class NoiseWinnowFeatSelect(_FeatureSelection):
             # Drop masked features
             X = X_input.drop(self.drop, axis=1)
             # Add noise feature
-            X["noise"] = _generate_noise(
-                n_sample, y, self.use_classifier
-            )
+            X["noise"] = _generate_noise(n_sample, y, self.use_classifier)
 
             # Initialize estimator
-            clf = ExtraTreesClassifier(
-                n_estimators=self.n_estimators,
-                criterion="gini",
-                max_depth=None,
-                min_samples_split=2,
-                min_samples_leaf=1,
-                min_weight_fraction_leaf=0.0,
-                max_features="sqrt",
-                max_leaf_nodes=None,
-                min_impurity_decrease=1e-07,
-                bootstrap=True,
-                oob_score=False,
-                n_jobs=n_jobs,
-                random_state=None,
-                verbose=0,
-                warm_start=False,
-                class_weight="balanced",
-            ) if self.use_classifier else ExtraTreesRegressor(
-                n_estimators=self.n_estimators,
-                criterion="squared_error",
-                max_depth=None,
-                min_samples_split=2,
-                min_samples_leaf=1,
-                min_weight_fraction_leaf=0.0,
-                max_features="auto",
-                max_leaf_nodes=None,
-                min_impurity_decrease=1e-07,
-                bootstrap=False,
-                oob_score=False,
-                n_jobs=n_jobs,
-                random_state=None,
-                verbose=0,
-                warm_start=False,
+            clf = (
+                ExtraTreesClassifier(
+                    n_estimators=self.n_estimators,
+                    criterion="gini",
+                    max_depth=None,
+                    min_samples_split=2,
+                    min_samples_leaf=1,
+                    min_weight_fraction_leaf=0.0,
+                    max_features="sqrt",
+                    max_leaf_nodes=None,
+                    min_impurity_decrease=1e-07,
+                    bootstrap=True,
+                    oob_score=False,
+                    n_jobs=n_jobs,
+                    random_state=None,
+                    verbose=0,
+                    warm_start=False,
+                    class_weight="balanced",
+                )
+                if self.use_classifier
+                else ExtraTreesRegressor(
+                    n_estimators=self.n_estimators,
+                    criterion="squared_error",
+                    max_depth=None,
+                    min_samples_split=2,
+                    min_samples_leaf=1,
+                    min_weight_fraction_leaf=0.0,
+                    max_leaf_nodes=None,
+                    min_impurity_decrease=1e-07,
+                    bootstrap=False,
+                    oob_score=False,
+                    n_jobs=n_jobs,
+                    random_state=None,
+                    verbose=0,
+                    warm_start=False,
+                )
             )
-
             clf.fit(X, y.reshape(-1))
             LOG.debug("done fitting once")
             importances = clf.feature_importances_
@@ -393,8 +390,14 @@ class SiteCorrelationSelector(_FeatureSelection):
                 class_weight="balanced",
             ).fit(X_train.drop(self.drop, axis=1), y_train.reshape(-1))
 
-            y_predicted = OneHotEncoder(sparse=False).fit(y_input).transform(
-                clf.predict(X_test.drop(self.drop, axis=1)).reshape(-1, 1).astype("uint8")
+            y_predicted = (
+                OneHotEncoder(sparse=False)
+                .fit(y_input)
+                .transform(
+                    clf.predict(X_test.drop(self.drop, axis=1))
+                    .reshape(-1, 1)
+                    .astype("uint8")
+                )
             )
 
             score = roc_auc_score(
@@ -438,8 +441,10 @@ def _generate_noise(n_sample, y, clf_flag=True):
     noise_corr = 1.0
     while noise_corr > 0.05:
         noise_feature = np.random.normal(loc=0, scale=10.0, size=(n_sample, 1))
-        noise_corr = np.abs(np.corrcoef(
-            noise_feature, y.reshape((n_sample, 1)), rowvar=0
-        )[0][1])
+        noise_corr = np.abs(
+            np.corrcoef(noise_feature, y.reshape((n_sample, 1)), rowvar=0)[0][
+                1
+            ]
+        )
 
     return noise_feature

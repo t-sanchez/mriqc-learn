@@ -26,6 +26,7 @@ from pkg_resources import resource_filename as pkgrf
 from joblib import load
 from sklearn.pipeline import Pipeline
 from sklearn.ensemble import RandomForestClassifier as RFC
+from sklearn.ensemble import GradientBoostingRegressor
 from mriqc_learn.models import preprocess as pp
 
 
@@ -33,27 +34,11 @@ def load_model():
     return load(pkgrf("mriqc_learn.data", "classifier.joblib"))
 
 
-def init_pipeline():
-    steps = [
-        (
-            "drop_ft",
-            pp.DropColumns(
-                drop=[f"size_{ax}" for ax in "xyz"] + [f"spacing_{ax}" for ax in "xyz"]
-            ),
-        ),
-        (
-            "scale",
-            pp.SiteRobustScaler(
-                with_centering=True,
-                with_scaling=True,
-                unit_variance=True,
-            ),
-        ),
-        ("site_pred", pp.SiteCorrelationSelector()),
-        ("winnow", pp.NoiseWinnowFeatSelect(use_classifier=True)),
-        ("drop_site", pp.DropColumns(drop=["site"])),
-        (
-            "rfc",
+def init_pipeline(
+    model=None, drop_ft=True, use_classifier=True, groupby="site"
+):
+    if model is None or model == "rfc":
+        model = (
             RFC(
                 bootstrap=True,
                 class_weight=None,
@@ -68,7 +53,40 @@ def init_pipeline():
                 n_estimators=400,
                 oob_score=True,
             ),
+        )
+    elif model == "gradient_boosting_regression_l1":
+        model = GradientBoostingRegressor(loss="absolute_error")
+    else:
+        raise RuntimeError(f"Unknown model {model}")
+    steps = []
+    if drop_ft:
+        steps += (
+            "drop_ft",
+            pp.DropColumns(
+                drop=[f"size_{ax}" for ax in "xyz"]
+                + [f"spacing_{ax}" for ax in "xyz"]
+            ),
+        )
+    steps += [
+        (
+            "scale",
+            pp.SiteRobustScaler(
+                with_centering=True,
+                with_scaling=True,
+                unit_variance=True,
+                groupby=groupby,
+            ),
         ),
+        ("site_pred", pp.SiteCorrelationSelector(site_col=groupby)),
+        (
+            "winnow",
+            pp.NoiseWinnowFeatSelect(
+                use_classifier=use_classifier, ignore=(groupby,)
+            ),
+        ),
+        ("drop_site", pp.DropColumns(drop=[groupby])),
+        ("print", pp.PrintColumns()),
+        ("model", model),
     ]
 
     return Pipeline(steps)

@@ -37,12 +37,22 @@ class LeavePSitesOut(BaseCrossValidator):
 
     """
 
-    def __init__(self, n_groups, colname="site", robust=True):
+    def __init__(
+        self,
+        n_groups,
+        colname="site",
+        robust=True,
+        shuffle=False,
+        random_state=None,
+    ):
         self.n_groups = n_groups
         self.colname = colname
         self.robust = robust
+        self.shuffle = shuffle
+        self.random_state = random_state
 
     def _iter_test_masks(self, X, y=None, groups=None, return_key=False):
+
         if groups is None:
             if X is not None and self.colname in X.columns:
                 groups = X[[self.colname]].values.squeeze()
@@ -60,6 +70,20 @@ class LeavePSitesOut(BaseCrossValidator):
         if y is not None and hasattr(y, "values"):
             y = y.values
 
+        if self.shuffle:
+            from sklearn.utils import check_random_state
+            import pandas as pd
+
+            n_samples = _num_samples(X)
+            indices = np.arange(n_samples)
+            check_random_state(self.random_state).shuffle(indices)
+            X = X.loc[indices] if isinstance(X, pd.DataFrame) else X[indices]
+            y = y.loc[indices] if isinstance(y, pd.DataFrame) else y[indices]
+            groups = (
+                groups.loc[indices]
+                if isinstance(groups, pd.DataFrame)
+                else groups[indices]
+            )
         for test_set_label in combinations(_groups, self.n_groups):
             test_index = np.zeros(_num_samples(X), dtype=bool)
 
@@ -74,7 +98,10 @@ class LeavePSitesOut(BaseCrossValidator):
             if len(test_set_label) == 1:
                 test_set_label = test_set_label[0]
 
-            yield test_index if not return_key else (test_set_label, test_index)
+            yield test_index if not return_key else (
+                test_set_label,
+                test_index,
+            )
 
     def get_n_splits(self, X=None, y=None, groups=None):
         """Returns the number of splitting iterations in the cross-validator
@@ -99,10 +126,13 @@ class LeavePSitesOut(BaseCrossValidator):
     def split(self, X, y=None, groups=None, return_key=False):
         X, y, groups = indexable(X, y, groups)
         indices = np.arange(_num_samples(X))
-        for labels, test_index in self._iter_test_masks(X, y, groups, return_key=True):
+        for labels, test_index in self._iter_test_masks(
+            X, y, groups, return_key=True
+        ):
             train_index = indices[np.logical_not(test_index)]
             test_index = indices[test_index]
             yield (
-                (train_index, test_index) if not return_key else
-                (train_index, (labels, test_index))
+                (train_index, test_index)
+                if not return_key
+                else (train_index, (labels, test_index))
             )

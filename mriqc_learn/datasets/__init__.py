@@ -35,9 +35,10 @@ def load_dataset(
     test_split=0.2,
     seed=None,
     site=None,
+    first_iqm="cjv",
 ):
     """Load default datasets."""
-    if dataset not in ("abide", "ds030"):
+    if dataset not in ("abide", "ds030", "chuv100"):
         raise ValueError(f"Unknown dataset <{dataset}>.")
 
     return load_data(
@@ -46,6 +47,7 @@ def load_dataset(
         test_split=test_split,
         seed=seed,
         site=site,
+        first_iqm=first_iqm,
     )
 
 
@@ -92,12 +94,12 @@ def load_data(
         path = Path(pkgrf("mriqc_learn.datasets", "abide.tsv"))
 
     dataframe = pd.read_csv(path, index_col=None, delimiter=r"\s+")
+    # Return the position of the first IQM in the list
     xy_index = dataframe.columns.tolist().index(first_iqm)
-
     if split_strategy is None or split_strategy.lower() == "none":
         return (
             dataframe[dataframe.columns[xy_index:]],
-            dataframe[dataframe.columns[:xy_index]]
+            dataframe[dataframe.columns[:xy_index]],
         ), (None, None)
 
     n = len(dataframe)
@@ -118,8 +120,8 @@ def load_data(
 
     return (
         train_df[dataframe.columns[xy_index:]],
-        train_df[dataframe.columns[:xy_index]]
+        train_df[dataframe.columns[:xy_index]],
     ), (
         test_df[dataframe.columns[xy_index:]],
-        test_df[dataframe.columns[:xy_index]]
+        test_df[dataframe.columns[:xy_index]],
     )
