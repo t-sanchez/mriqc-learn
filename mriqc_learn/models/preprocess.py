@@ -27,6 +27,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics import roc_auc_score
 from sklearn.preprocessing import (
     RobustScaler,
+    StandardScaler,
     OrdinalEncoder,
     OneHotEncoder,
     LabelBinarizer,
@@ -64,7 +65,6 @@ class _FeatureSelection(BaseEstimator, TransformerMixin):
         """
         if self.disable or not self.drop:
             return X
-
         return X.drop(
             [field for field in self.drop if field not in self.ignore], axis=1
         )
@@ -90,6 +90,7 @@ class DropColumns(_FeatureSelection):
         self.ignore = tuple()
 
     def fit(self, X, y=None):
+        print("Dropcol", X)
         return self
 
 
@@ -105,7 +106,7 @@ class PrintColumns(BaseEstimator, TransformerMixin):
         return X
 
 
-class SiteRobustScaler(RobustScaler):
+class GroupRobustScaler(RobustScaler):
     def __init__(
         self,
         *,
@@ -124,18 +125,26 @@ class SiteRobustScaler(RobustScaler):
         self.unit_variance = unit_variance
 
     def fit(self, X, y=None):
-        sites = X[[self.groupby]].values.squeeze()
-        X_input = X.drop([self.groupby], axis=1)
-
-        self.scalers_ = {}
-        for group in set(sites):
-            self.scalers_[group] = RobustScaler(
+        if self.groupby is None:
+            self.scalers_ = RobustScaler(
                 with_centering=self.with_centering,
                 with_scaling=self.with_scaling,
                 quantile_range=self.quantile_range,
                 copy=self.copy,
                 unit_variance=self.unit_variance,
-            ).fit(X_input[sites == group])
+            ).fit(X)
+        else:
+            sites = X[[self.groupby]].values.squeeze()
+            X_input = X.drop([self.groupby], axis=1)
+            self.scalers_ = {}
+            for group in set(sites):
+                self.scalers_[group] = RobustScaler(
+                    with_centering=self.with_centering,
+                    with_scaling=self.with_scaling,
+                    quantile_range=self.quantile_range,
+                    copy=self.copy,
+                    unit_variance=self.unit_variance,
+                ).fit(X_input[sites == group])
         return self
 
     def transform(self, X, y=None):
@@ -144,29 +153,97 @@ class SiteRobustScaler(RobustScaler):
 
         if self.copy:
             X = X.copy()
+        if self.groupby is None:
+            X[X.columns] = self.scalers_.transform(X)
+            return X
+        else:
+            sites = X[[self.groupby]].values.squeeze()
+            X_input = X.drop([self.groupby], axis=1)
 
-        sites = X[[self.groupby]].values.squeeze()
-        X_input = X.drop([self.groupby], axis=1)
+            for group in set(sites):
+                if group not in self.scalers_:
+                    # Yet unseen group
+                    self.scalers_[group] = RobustScaler(
+                        with_centering=self.with_centering,
+                        with_scaling=self.with_scaling,
+                        quantile_range=self.quantile_range,
+                        copy=self.copy,
+                        unit_variance=self.unit_variance,
+                    ).fit(X_input[sites == group])
 
-        for group in set(sites):
-            if group not in self.scalers_:
-                # Yet unseen group
-                self.scalers_[group] = RobustScaler(
-                    with_centering=self.with_centering,
-                    with_scaling=self.with_scaling,
-                    quantile_range=self.quantile_range,
+                # Apply scaling
+                X_input[sites == group] = self.scalers_[group].transform(
+                    X_input[sites == group]
+                )
+
+            # Get sites back
+            X_input[self.groupby] = sites
+            return X_input
+
+
+class GroupStandardScaler(StandardScaler):
+    def __init__(
+        self,
+        *,
+        copy=True,
+        with_mean=True,
+        with_std=True,
+        groupby="site",
+    ):
+        self.groupby = groupby
+        self.with_mean = with_mean
+        self.with_std = with_std
+        self.copy = copy
+
+    def fit(self, X, y=None):
+        if self.groupby is None:
+            self.scalers_ = StandardScaler(
+                with_mean=self.with_mean,
+                with_std=self.with_std,
+                copy=self.copy,
+            ).fit(X)
+        else:
+            sites = X[[self.groupby]].values.squeeze()
+            X_input = X.drop([self.groupby], axis=1)
+            self.scalers_ = {}
+            for group in set(sites):
+                self.scalers_[group] = StandardScaler(
+                    with_mean=self.with_mean,
+                    with_std=self.with_std,
                     copy=self.copy,
-                    unit_variance=self.unit_variance,
                 ).fit(X_input[sites == group])
+        return self
 
-            # Apply scaling
-            X_input[sites == group] = self.scalers_[group].transform(
-                X_input[sites == group]
-            )
+    def transform(self, X, y=None):
+        if not self.scalers_:
+            self.fit(X)
 
-        # Get sites back
-        X_input[self.groupby] = sites
-        return X_input
+        if self.copy:
+            X = X.copy()
+        if self.groupby is None:
+            X[X.columns] = self.scalers_.transform(X)
+            return X
+        else:
+            sites = X[[self.groupby]].values.squeeze()
+            X_input = X.drop([self.groupby], axis=1)
+
+            for group in set(sites):
+                if group not in self.scalers_:
+                    # Yet unseen group
+                    self.scalers_[group] = StandardScaler(
+                        with_mean=self.with_mean,
+                        with_std=self.with_std,
+                        copy=self.copy,
+                    ).fit(X_input[sites == group])
+
+                # Apply scaling
+                X_input[sites == group] = self.scalers_[group].transform(
+                    X_input[sites == group]
+                )
+
+            # Get sites back
+            X_input[self.groupby] = sites
+            return X_input
 
 
 class NoiseWinnowFeatSelect(_FeatureSelection):
@@ -296,6 +373,7 @@ class NoiseWinnowFeatSelect(_FeatureSelection):
 
         self.importances_ = importances[:-1]
         self.importances_snr_ = importances[:-1] / importances[-1]
+        print(self.drop)
         return self
 
 
@@ -355,9 +433,13 @@ class SiteCorrelationSelector(_FeatureSelection):
         n_sample, n_feature = np.shape(X_input.drop(self.drop, axis=1))
 
         y_input = OrdinalEncoder().fit_transform(sites)
-
+        # I don't know if the stratification as suggested here is actually what we need, or whether it is correct.
         X_train, X_test, y_train, y_test = train_test_split(
-            X_input, y_input, test_size=0.33, random_state=42
+            X_input,
+            y_input,
+            test_size=0.33,
+            random_state=42,
+            stratify=y_input,
         )
 
         max_remove = max(n_feature - 5, 0)
@@ -399,7 +481,6 @@ class SiteCorrelationSelector(_FeatureSelection):
                     .astype("uint8")
                 )
             )
-
             score = roc_auc_score(
                 y_test,
                 y_predicted,
@@ -407,7 +488,6 @@ class SiteCorrelationSelector(_FeatureSelection):
                 multi_class="ovr",
                 sample_weight=None,
             )
-
             if score < self.target_auc:
                 break
             if self.max_iter is not None and i >= self.max_iter:

@@ -36,9 +36,10 @@ def load_dataset(
     seed=None,
     site=None,
     first_iqm="cjv",
+    drop_nan=False,
 ):
     """Load default datasets."""
-    if dataset not in ("abide", "ds030", "chuv100"):
+    if dataset not in ("abide", "ds030", "chuv100", "chuv_bcn"):
         raise ValueError(f"Unknown dataset <{dataset}>.")
 
     return load_data(
@@ -48,6 +49,7 @@ def load_dataset(
         seed=seed,
         site=site,
         first_iqm=first_iqm,
+        drop_nan=drop_nan,
     )
 
 
@@ -58,6 +60,7 @@ def load_data(
     seed=None,
     site=None,
     first_iqm="cjv",
+    drop_nan=False,
 ):
     """
     Load the ABIDE dataset.
@@ -94,8 +97,14 @@ def load_data(
         path = Path(pkgrf("mriqc_learn.datasets", "abide.tsv"))
 
     dataframe = pd.read_csv(path, index_col=None, delimiter=r"\s+")
+
     # Return the position of the first IQM in the list
     xy_index = dataframe.columns.tolist().index(first_iqm)
+    if drop_nan:
+        dataframe = dataframe.dropna(axis=0)
+        cols = dataframe.columns[xy_index:]
+        types = {col: float if "nan" not in col else bool for col in cols}
+        dataframe = dataframe.astype(types)
     if split_strategy is None or split_strategy.lower() == "none":
         return (
             dataframe[dataframe.columns[xy_index:]],

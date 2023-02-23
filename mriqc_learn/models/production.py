@@ -35,7 +35,12 @@ def load_model():
 
 
 def init_pipeline(
-    model=None, drop_ft=True, use_classifier=True, groupby="site"
+    model=None,
+    drop_ft=True,
+    scale="local",
+    remove_noisy=True,
+    use_classifier=True,
+    groupby="site",
 ):
     if model is None or model == "rfc":
         model = (
@@ -67,26 +72,59 @@ def init_pipeline(
                 + [f"spacing_{ax}" for ax in "xyz"]
             ),
         )
+
+    if scale == "global":
+        from sklearn.preprocessing import RobustScaler
+
+        steps += [
+            # ("drop_site", pp.DropColumns(drop=[groupby])),
+            (
+                "scale",
+                pp.GroupRobustScaler(
+                    with_centering=True,
+                    with_scaling=True,
+                    unit_variance=True,
+                    groupby=None,
+                ),
+            ),
+        ]
+    elif scale == "local":
+        steps += [
+            (
+                "scale",
+                pp.GroupRobustScaler(
+                    with_centering=True,
+                    with_scaling=True,
+                    unit_variance=True,
+                    groupby=groupby,
+                ),
+            ),
+            ("site_pred", pp.SiteCorrelationSelector(site_col=groupby)),
+        ]
+    else:
+        if not (scale is None or scale.lower() == "none"):
+            raise RuntimeError(f"Unknown scaling option {scale}")
+        else:
+            if groupby is not None:
+                steps += [("drop_site", pp.DropColumns(drop=[groupby]))]
+    if remove_noisy:
+        steps += [
+            (
+                "winnow",
+                pp.NoiseWinnowFeatSelect(
+                    use_classifier=use_classifier, ignore=(groupby,)
+                ),
+            )
+        ]
+    if remove_noisy or scale == "local":
+        steps += [
+            ("print", pp.PrintColumns()),
+        ]
+    if scale == "local":
+        steps += [("drop_site", pp.DropColumns(drop=[groupby]))]
+
     steps += [
-        (
-            "scale",
-            pp.SiteRobustScaler(
-                with_centering=True,
-                with_scaling=True,
-                unit_variance=True,
-                groupby=groupby,
-            ),
-        ),
-        ("site_pred", pp.SiteCorrelationSelector(site_col=groupby)),
-        (
-            "winnow",
-            pp.NoiseWinnowFeatSelect(
-                use_classifier=use_classifier, ignore=(groupby,)
-            ),
-        ),
-        ("drop_site", pp.DropColumns(drop=[groupby])),
-        ("print", pp.PrintColumns()),
         ("model", model),
     ]
-
+    print(steps)
     return Pipeline(steps)
